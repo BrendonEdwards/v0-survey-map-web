@@ -25,6 +25,45 @@ export default function SurveyMapPage() {
   const { parseUrlState, updateUrlState, getShareableUrl, clearUrlState } = useUrlState()
 
   useEffect(() => {
+    const handleError = (event: ErrorEvent) => {
+      const message = event.message || ""
+      // Suppress querySelector errors that contain hash-like patterns
+      if (
+        message.includes("querySelector") &&
+        message.includes("not a valid selector") &&
+        message.includes("#") &&
+        (message.includes("/") || message.includes("."))
+      ) {
+        console.warn("Suppressed querySelector error with hash value:", message)
+        event.preventDefault()
+        return false
+      }
+    }
+
+    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+      const reason = event.reason?.message || event.reason || ""
+      if (
+        typeof reason === "string" &&
+        reason.includes("querySelector") &&
+        reason.includes("not a valid selector") &&
+        reason.includes("#") &&
+        (reason.includes("/") || reason.includes("."))
+      ) {
+        console.warn("Suppressed querySelector promise rejection:", reason)
+        event.preventDefault()
+      }
+    }
+
+    window.addEventListener("error", handleError)
+    window.addEventListener("unhandledrejection", handleUnhandledRejection)
+
+    return () => {
+      window.removeEventListener("error", handleError)
+      window.removeEventListener("unhandledrejection", handleUnhandledRejection)
+    }
+  }, [])
+
+  useEffect(() => {
     const urlState = parseUrlState()
 
     // Handle initial cell ID from URL

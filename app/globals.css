@@ -38,6 +38,7 @@
   --sidebar-accent-foreground: #ffffff;
   --sidebar-border: #e5e7eb;
   --sidebar-ring: rgba(139, 92, 246, 0.5);
+  --font-inter: "Inter", sans-serif;
 }
 
 .dark {
@@ -74,11 +75,12 @@
   --sidebar-accent-foreground: #f1f5f9;
   --sidebar-border: #334155;
   --sidebar-ring: rgba(167, 139, 250, 0.5);
+  --font-inter: "Inter", sans-serif;
 }
 
 @theme inline {
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* Updated font variables to use Inter instead of Geist */
+  --font-sans: var(--font-inter);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);

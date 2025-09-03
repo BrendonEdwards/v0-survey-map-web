@@ -2,7 +2,7 @@
   "name": "my-v0-project",
   "version": "0.1.0",
   "private": true,
-  "scripts": {
+  "scripts": {"dependencies":
     "build": "next build",
     "dev": "next dev",
     "lint": "next lint",
@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
+    "leaflet.markercluster": "^1.5.3",
     "@radix-ui/react-accordion": "1.2.2",
     "@radix-ui/react-alert-dialog": "1.1.4",
     "@radix-ui/react-aspect-ratio": "1.1.1",
@@ -69,6 +70,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.9",
+    "@types/leaflet.markercluster": "^1.5.7",
     "@types/node": "^22",
     "@types/react": "^19",
     "@types/react-dom": "^19",

@@ -64,7 +64,6 @@ const MapContainer = forwardRef<MapContainerRef, MapContainerProps>(({ onMapStat
   const mapRef = useRef<any>(null)
   const mapContainerRef = useRef<HTMLDivElement>(null)
   const surveyLayerRef = useRef<any>(null)
-  const canvasRendererRef = useRef<any>(null)
 
   const [surveyPoints, setSurveyPoints] = useState<SurveyPoint[]>([])
   const [currentZoom, setCurrentZoom] = useState(10)
@@ -137,28 +136,20 @@ const MapContainer = forwardRef<MapContainerRef, MapContainerProps>(({ onMapStat
           try {
             if (!mapRef.current || !window.L) return
 
-            const highlightOptions: any = {
+            const highlight = window.L.circleMarker([point.lat, point.lng], {
               radius: 12,
               fillColor: "#fbbf24",
               color: "#f59e0b",
               weight: 3,
               opacity: 1,
               fillOpacity: 0.6,
-            }
+            })
 
-            // Only use canvas renderer if it's properly initialized
-            if (canvasRendererRef.current && typeof canvasRendererRef.current.addTo === "function") {
-              highlightOptions.renderer = canvasRendererRef.current
-            }
-
-            const highlight = window.L.circleMarker([point.lat, point.lng], highlightOptions)
-
-            // Ensure map container is ready before adding highlight
-            if (mapRef.current._container && mapRef.current._loaded) {
+            if (mapRef.current._container && mapRef.current._loaded && mapRef.current.getContainer()) {
               highlight.addTo(mapRef.current)
               setTimeout(() => {
                 try {
-                  if (mapRef.current && mapRef.current.hasLayer && mapRef.current.hasLayer(highlight)) {
+                  if (mapRef.current && highlight && mapRef.current.hasLayer && mapRef.current.hasLayer(highlight)) {
                     mapRef.current.removeLayer(highlight)
                   }
                 } catch (e) {
@@ -208,25 +199,6 @@ const MapContainer = forwardRef<MapContainerRef, MapContainerProps>(({ onMapStat
   const createSurveyPointsLayer = (points: SurveyPoint[]) => {
     if (!window.L) return null
 
-    let canvas = canvasRendererRef.current
-    if (!canvas) {
-      try {
-        if (window.L.canvas && typeof window.L.canvas === "function") {
-          canvas = window.L.canvas()
-          // Verify the canvas renderer is properly initialized
-          if (canvas && typeof canvas.addTo === "function") {
-            canvasRendererRef.current = canvas
-          } else {
-            canvas = undefined
-          }
-        }
-      } catch (e) {
-        console.warn("[v0] Canvas renderer creation failed, using default", e)
-        canvas = undefined
-        canvasRendererRef.current = null
-      }
-    }
-
     const cluster = (window.L as any).markerClusterGroup
       ? (window.L as any).markerClusterGroup({
           maxClusterRadius: 60,
@@ -237,58 +209,28 @@ const MapContainer = forwardRef<MapContainerRef, MapContainerProps>(({ onMapStat
 
     points.forEach((p) => {
       try {
-        const markerOptions: any = {
+        const m = window.L.circleMarker([p.lat, p.lng], {
           radius: 4,
           weight: 1,
           color: "#dc2626",
           fillColor: "#dc2626",
           fillOpacity: 0.9,
-        }
-
-        // Only use canvas renderer if it's properly initialized
-        if (canvas && typeof canvas.addTo === "function") {
-          markerOptions.renderer = canvas
-        }
-
-        const m = window.L.circleMarker([p.lat, p.lng], markerOptions)
-
-        m.on("add", () => {
-          try {
-            const z = mapRef.current?.getZoom?.() ?? 0
-            if (z >= LABEL_ZOOM && !m.getTooltip()) {
-              m.bindTooltip(p.name, {
-                permanent: true,
-                direction: "top",
-                opacity: 0.9,
-                className: "survey-point-label",
-              })
-            }
-          } catch (e) {
-            console.warn("[v0] Tooltip binding error", e)
-          }
         })
 
-        if (mapRef.current) {
-          mapRef.current.on("zoomend", () => {
-            try {
-              const z = mapRef.current?.getZoom?.() ?? 0
-              if (z >= LABEL_ZOOM && !m.getTooltip()) {
-                m.bindTooltip(p.name, {
-                  permanent: true,
-                  direction: "top",
-                  opacity: 0.9,
-                  className: "survey-point-label",
-                })
-              } else if (z < LABEL_ZOOM && m.getTooltip()) {
-                m.unbindTooltip()
-              }
-            } catch (e) {
-              console.warn("[v0] Tooltip zoom handler error", e)
-            }
-          })
+        try {
+          if (m && typeof m.bindTooltip === "function") {
+            m.bindTooltip(p.name, {
+              permanent: true,
+              direction: "top",
+              opacity: 0.9,
+              className: "survey-point-label",
+            })
+          }
+        } catch (e) {
+          console.warn("[v0] Tooltip binding error for", p.cell_id, e)
         }
 
-        if (cluster && typeof cluster.addLayer === "function") {
+        if (cluster && typeof cluster.addLayer === "function" && m) {
           cluster.addLayer(m)
         }
       } catch (e) {
@@ -308,7 +250,6 @@ const MapContainer = forwardRef<MapContainerRef, MapContainerProps>(({ onMapStat
       console.warn("[v0] Map container not properly sized, retrying...")
       setTimeout(() => {
         if (container.offsetWidth && container.offsetHeight && !mapRef.current) {
-          // Retry initialization when container is properly sized
           setLeafletLoaded(false)
           setTimeout(() => setLeafletLoaded(true), 100)
         }
@@ -318,21 +259,9 @@ const MapContainer = forwardRef<MapContainerRef, MapContainerProps>(({ onMapStat
 
     try {
       const map = window.L.map(mapContainerRef.current, {
-        center: initialState ? [initialState.lat, initialState.lng] : [24.7136, 46.6753], // Riyadh
+        center: initialState ? [initialState.lat, initialState.lng] : [24.7136, 46.6753],
         zoom: initialState?.zoom || 11,
         zoomControl: false,
-        preferCanvas: true,
-      })
-
-      map.whenReady(() => {
-        try {
-          if (window.L.canvas && typeof window.L.canvas === "function") {
-            canvasRendererRef.current = window.L.canvas()
-          }
-        } catch (e) {
-          console.warn("[v0] Canvas renderer initialization failed", e)
-          canvasRendererRef.current = null
-        }
       })
 
       window.L.control.zoom({ position: "bottomright" }).addTo(map)
@@ -398,9 +327,6 @@ const MapContainer = forwardRef<MapContainerRef, MapContainerProps>(({ onMapStat
 
       return () => {
         try {
-          if (canvasRendererRef.current) {
-            canvasRendererRef.current = null
-          }
           map.remove()
           mapRef.current = null
         } catch (e) {

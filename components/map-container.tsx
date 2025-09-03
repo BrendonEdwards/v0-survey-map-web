@@ -145,11 +145,30 @@ const MapContainer = forwardRef<MapContainerRef, MapContainerProps>(({ onMapStat
     try {
       console.log("[v0] Starting GeoJSON data load...")
       const response = await fetch("/centroid.geojson")
+
+      console.log("[v0] Fetch response status:", response.status)
+      console.log("[v0] Fetch response headers:", Object.fromEntries(response.headers.entries()))
+
       if (!response.ok) {
-        throw new Error(`Failed to load GeoJSON: ${response.statusText}`)
+        throw new Error(`Failed to load GeoJSON: ${response.status} ${response.statusText}`)
       }
 
-      const geojsonData = await response.json()
+      const responseText = await response.text()
+      console.log("[v0] Response content type:", response.headers.get("content-type"))
+      console.log("[v0] Response text (first 200 chars):", responseText.substring(0, 200))
+
+      if (responseText.trim().startsWith("<!DOCTYPE") || responseText.trim().startsWith("<html")) {
+        throw new Error("Received HTML instead of JSON - file may not exist or server routing issue")
+      }
+
+      let geojsonData
+      try {
+        geojsonData = JSON.parse(responseText)
+      } catch (parseError) {
+        console.error("[v0] JSON parse error:", parseError)
+        throw new Error(`Invalid JSON response: ${parseError}`)
+      }
+
       console.log("[v0] GeoJSON data loaded:", geojsonData)
 
       if (!geojsonData.features || !Array.isArray(geojsonData.features)) {
@@ -269,7 +288,7 @@ const MapContainer = forwardRef<MapContainerRef, MapContainerProps>(({ onMapStat
           const zoom = map.getZoom()
           setCurrentZoom(zoom)
 
-          if (zoom >= 12 && surveyLayerRef.current) {
+          if (zoom >= 8 && surveyLayerRef.current) {
             if (!map.hasLayer(surveyLayerRef.current)) {
               map.addLayer(surveyLayerRef.current)
             }
@@ -368,11 +387,11 @@ const MapContainer = forwardRef<MapContainerRef, MapContainerProps>(({ onMapStat
             // Only add layer if zoomed in enough
             const currentZoom = mapRef.current.getZoom()
             console.log("[v0] Current zoom level:", currentZoom)
-            if (currentZoom >= 12) {
-              console.log("[v0] Adding survey layer to map (zoom >= 12)")
+            if (currentZoom >= 8) {
+              console.log("[v0] Adding survey layer to map (zoom >= 8)")
               mapRef.current.addLayer(surveyLayer)
             } else {
-              console.log("[v0] Not adding survey layer (zoom < 12)")
+              console.log("[v0] Not adding survey layer (zoom < 8)")
             }
           } else {
             console.log("[v0] Failed to create survey layer")
@@ -461,7 +480,7 @@ const MapContainer = forwardRef<MapContainerRef, MapContainerProps>(({ onMapStat
       <div className="hidden lg:block absolute bottom-4 left-4 z-[1000]">
         <MapStats
           totalPoints={surveyPoints.length}
-          visiblePoints={currentZoom >= 12 ? surveyPoints.length : 0}
+          visiblePoints={currentZoom >= 8 ? surveyPoints.length : 0}
           currentZoom={currentZoom}
           isLoading={isLoading}
         />

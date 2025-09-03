@@ -4,9 +4,6 @@ import { Inter } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
 import { Suspense } from "react"
 import "./globals.css"
-+import "leaflet/dist/leaflet.css"
-+import "leaflet.markercluster/dist/MarkerCluster.css"
-+import "leaflet.markercluster/dist/MarkerCluster.Default.css"
 
 const inter = Inter({
   subsets: ["latin"],

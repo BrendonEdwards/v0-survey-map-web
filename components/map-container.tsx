@@ -1,7 +1,6 @@
 "use client"
 
 import { useEffect, useRef, useState, forwardRef, useImperativeHandle } from "react"
-import L from "leaflet"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Layers } from "lucide-react"
@@ -19,6 +18,7 @@ interface SurveyPoint {
   lat: number
   lng: number
   cell_id: string
+  name: string
 }
 
 const sanitizeCssClass = (str: string): string => str.replace(/[^a-zA-Z0-9_-]/g, "_")
@@ -134,21 +134,41 @@ const MapContainer = forwardRef<MapContainerRef, MapContainerProps>(({ onMapStat
       if (point && mapRef.current && window.L) {
         mapRef.current.flyTo([point.lat, point.lng], 16, { duration: 1.2 })
         setTimeout(() => {
-          const highlight = window.L.circleMarker([point.lat, point.lng], {
-            radius: 12,
-            fillColor: "#fbbf24",
-            color: "#f59e0b",
-            weight: 3,
-            opacity: 1,
-            fillOpacity: 0.6,
-            renderer: canvasRendererRef.current || undefined,
-          })
-          highlight.addTo(mapRef.current)
-          setTimeout(() => {
-            if (mapRef.current && mapRef.current.hasLayer(highlight)) {
-              mapRef.current.removeLayer(highlight)
+          try {
+            if (!mapRef.current || !window.L) return
+
+            const highlightOptions: any = {
+              radius: 12,
+              fillColor: "#fbbf24",
+              color: "#f59e0b",
+              weight: 3,
+              opacity: 1,
+              fillOpacity: 0.6,
             }
-          }, 1800)
+
+            // Only use canvas renderer if it's properly initialized
+            if (canvasRendererRef.current && typeof canvasRendererRef.current.addTo === "function") {
+              highlightOptions.renderer = canvasRendererRef.current
+            }
+
+            const highlight = window.L.circleMarker([point.lat, point.lng], highlightOptions)
+
+            // Ensure map container is ready before adding highlight
+            if (mapRef.current._container && mapRef.current._loaded) {
+              highlight.addTo(mapRef.current)
+              setTimeout(() => {
+                try {
+                  if (mapRef.current && mapRef.current.hasLayer && mapRef.current.hasLayer(highlight)) {
+                    mapRef.current.removeLayer(highlight)
+                  }
+                } catch (e) {
+                  console.warn("[v0] Highlight cleanup error", e)
+                }
+              }, 1800)
+            }
+          } catch (e) {
+            console.warn("[v0] Highlight creation error", e)
+          }
         }, 1200)
         return true
       }
@@ -157,12 +177,15 @@ const MapContainer = forwardRef<MapContainerRef, MapContainerProps>(({ onMapStat
     getSuggestions: (query: string): string[] => {
       if (!query.trim()) return []
       const lower = query.toLowerCase()
-      return surveyPoints.filter((p) => p.cell_id.toLowerCase().includes(lower)).map((p) => p.cell_id).sort()
+      return surveyPoints
+        .filter((p) => p.cell_id.toLowerCase().includes(lower) || p.name.toLowerCase().includes(lower))
+        .map((p) => p.cell_id)
+        .sort()
     },
   }))
 
   const loadGeoJSONData = async (): Promise<SurveyPoint[]> => {
-    const response = await fetch(`/centroid.geojson?v=${Date.now()}`, { cache: "no-store" })
+    const response = await fetch(`/centroid.geojson`, { cache: "default" })
     if (!response.ok) throw new Error(`Failed to load GeoJSON: ${response.status} ${response.statusText}`)
     const text = await response.text()
     if (text.trim().startsWith("<")) throw new Error("Received HTML instead of JSON")
@@ -174,7 +197,8 @@ const MapContainer = forwardRef<MapContainerRef, MapContainerProps>(({ onMapStat
       const [lng, lat] = f.geometry.coordinates || []
       if (Number.isFinite(lat) && Number.isFinite(lng)) {
         const cell = f.properties?.cell_id ?? f.properties?.name ?? `Point_${i}`
-        points.push({ id: `point_${i}`, lat, lng, cell_id: cell })
+        const name = f.properties?.Name ?? f.properties?.name ?? cell
+        points.push({ id: `point_${i}`, lat, lng, cell_id: cell, name })
       }
     })
     return points
@@ -183,35 +207,93 @@ const MapContainer = forwardRef<MapContainerRef, MapContainerProps>(({ onMapStat
   /** build the survey layer, clustered if plugin loaded */
   const createSurveyPointsLayer = (points: SurveyPoint[]) => {
     if (!window.L) return null
-    const canvas = canvasRendererRef.current || window.L.canvas()
-    canvasRendererRef.current = canvas
 
-    const cluster =
-      (window.L as any).markerClusterGroup
-        ? (window.L as any).markerClusterGroup({
-            maxClusterRadius: 60,
-            spiderfyOnEveryZoom: false,
-            showCoverageOnHover: false,
-          })
-        : window.L.layerGroup()
+    let canvas = canvasRendererRef.current
+    if (!canvas) {
+      try {
+        if (window.L.canvas && typeof window.L.canvas === "function") {
+          canvas = window.L.canvas()
+          // Verify the canvas renderer is properly initialized
+          if (canvas && typeof canvas.addTo === "function") {
+            canvasRendererRef.current = canvas
+          } else {
+            canvas = undefined
+          }
+        }
+      } catch (e) {
+        console.warn("[v0] Canvas renderer creation failed, using default", e)
+        canvas = undefined
+        canvasRendererRef.current = null
+      }
+    }
+
+    const cluster = (window.L as any).markerClusterGroup
+      ? (window.L as any).markerClusterGroup({
+          maxClusterRadius: 60,
+          spiderfyOnEveryZoom: false,
+          showCoverageOnHover: false,
+        })
+      : window.L.layerGroup()
 
     points.forEach((p) => {
-      const m = window.L.circleMarker([p.lat, p.lng], {
-        renderer: canvas,
-        radius: 4,
-        weight: 1,
-        color: "#dc2626",
-        fillColor: "#dc2626",
-        fillOpacity: 0.9,
-      })
-      // add tooltip only when zoomed in, to avoid thousands of DOM nodes
-      m.on("add", () => {
-        const z = mapRef.current?.getZoom?.() ?? 0
-        if (z >= LABEL_ZOOM && !m.getTooltip()) {
-          m.bindTooltip(p.cell_id, { permanent: false, direction: "top", opacity: 0.9 })
+      try {
+        const markerOptions: any = {
+          radius: 4,
+          weight: 1,
+          color: "#dc2626",
+          fillColor: "#dc2626",
+          fillOpacity: 0.9,
         }
-      })
-      ;(cluster as any).addLayer(m)
+
+        // Only use canvas renderer if it's properly initialized
+        if (canvas && typeof canvas.addTo === "function") {
+          markerOptions.renderer = canvas
+        }
+
+        const m = window.L.circleMarker([p.lat, p.lng], markerOptions)
+
+        m.on("add", () => {
+          try {
+            const z = mapRef.current?.getZoom?.() ?? 0
+            if (z >= LABEL_ZOOM && !m.getTooltip()) {
+              m.bindTooltip(p.name, {
+                permanent: true,
+                direction: "top",
+                opacity: 0.9,
+                className: "survey-point-label",
+              })
+            }
+          } catch (e) {
+            console.warn("[v0] Tooltip binding error", e)
+          }
+        })
+
+        if (mapRef.current) {
+          mapRef.current.on("zoomend", () => {
+            try {
+              const z = mapRef.current?.getZoom?.() ?? 0
+              if (z >= LABEL_ZOOM && !m.getTooltip()) {
+                m.bindTooltip(p.name, {
+                  permanent: true,
+                  direction: "top",
+                  opacity: 0.9,
+                  className: "survey-point-label",
+                })
+              } else if (z < LABEL_ZOOM && m.getTooltip()) {
+                m.unbindTooltip()
+              }
+            } catch (e) {
+              console.warn("[v0] Tooltip zoom handler error", e)
+            }
+          })
+        }
+
+        if (cluster && typeof cluster.addLayer === "function") {
+          cluster.addLayer(m)
+        }
+      } catch (e) {
+        console.warn("[v0] Marker creation error for point", p.cell_id, e)
+      }
     })
 
     return cluster
@@ -220,6 +302,20 @@ const MapContainer = forwardRef<MapContainerRef, MapContainerProps>(({ onMapStat
   // Initialise map
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current || !leafletLoaded || !window.L) return
+
+    const container = mapContainerRef.current
+    if (!container.offsetWidth || !container.offsetHeight) {
+      console.warn("[v0] Map container not properly sized, retrying...")
+      setTimeout(() => {
+        if (container.offsetWidth && container.offsetHeight && !mapRef.current) {
+          // Retry initialization when container is properly sized
+          setLeafletLoaded(false)
+          setTimeout(() => setLeafletLoaded(true), 100)
+        }
+      }, 100)
+      return
+    }
+
     try {
       const map = window.L.map(mapContainerRef.current, {
         center: initialState ? [initialState.lat, initialState.lng] : [24.7136, 46.6753], // Riyadh
@@ -228,7 +324,17 @@ const MapContainer = forwardRef<MapContainerRef, MapContainerProps>(({ onMapStat
         preferCanvas: true,
       })
 
-      canvasRendererRef.current = window.L.canvas()
+      map.whenReady(() => {
+        try {
+          if (window.L.canvas && typeof window.L.canvas === "function") {
+            canvasRendererRef.current = window.L.canvas()
+          }
+        } catch (e) {
+          console.warn("[v0] Canvas renderer initialization failed", e)
+          canvasRendererRef.current = null
+        }
+      })
+
       window.L.control.zoom({ position: "bottomright" }).addTo(map)
 
       const basemaps = createBasemaps()
@@ -253,13 +359,10 @@ const MapContainer = forwardRef<MapContainerRef, MapContainerProps>(({ onMapStat
         safe(() => {
           const z = map.getZoom()
           setCurrentZoom(z)
-          const layer = surveyLayerRef.current
-          if (!layer) return
+          // Show/hide toast based on zoom level
           if (z >= ZOOM_THRESHOLD) {
-            if (!map.hasLayer(layer)) map.addLayer(layer)
             setShowZoomToast(false)
           } else {
-            if (map.hasLayer(layer)) map.removeLayer(layer)
             setShowZoomToast(true)
           }
         }),
@@ -295,6 +398,9 @@ const MapContainer = forwardRef<MapContainerRef, MapContainerProps>(({ onMapStat
 
       return () => {
         try {
+          if (canvasRendererRef.current) {
+            canvasRendererRef.current = null
+          }
           map.remove()
           mapRef.current = null
         } catch (e) {
@@ -320,9 +426,12 @@ const MapContainer = forwardRef<MapContainerRef, MapContainerProps>(({ onMapStat
         if (mapRef.current && window.L) {
           const layer = createSurveyPointsLayer(points)
           if (layer) {
+            if (surveyLayerRef.current && mapRef.current.hasLayer(surveyLayerRef.current)) {
+              mapRef.current.removeLayer(surveyLayerRef.current)
+            }
+
             surveyLayerRef.current = layer
-            const z = mapRef.current.getZoom()
-            if (z >= ZOOM_THRESHOLD) mapRef.current.addLayer(layer)
+            mapRef.current.addLayer(layer)
 
             // fit to data once
             try {
@@ -339,8 +448,16 @@ const MapContainer = forwardRef<MapContainerRef, MapContainerProps>(({ onMapStat
       }
     }
 
-    if (mapRef.current && leafletLoaded) run()
-  }, [mapRef.current, leafletLoaded, clusterReady])
+    if (mapRef.current && leafletLoaded && (!surveyPoints.length || (clusterReady && !surveyLayerRef.current))) {
+      run()
+    }
+  }, [leafletLoaded, clusterReady, surveyPoints.length])
+
+  useEffect(() => {
+    if (mapRef.current && surveyLayerRef.current && !mapRef.current.hasLayer(surveyLayerRef.current)) {
+      mapRef.current.addLayer(surveyLayerRef.current)
+    }
+  }, [currentZoom])
 
   // Switch basemap
   const switchBasemap = (newBasemap: "osm" | "humanitarian") => {

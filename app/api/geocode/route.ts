@@ -1,11 +1,7 @@
 export const dynamic = "force-dynamic";
-
 import { NextResponse } from "next/server";
 
 const NOMINATIM = "https://nominatim.openstreetmap.org/search";
-
-// ensure dynamic so results are not cached
-export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
@@ -20,7 +16,8 @@ export async function GET(req: Request) {
     headers: {
       "User-Agent": "survey-map-app on vercel",
       "Accept-Language": "en"
-    }
+    },
+    cache: "no-store"
   });
 
   if (!r.ok) {

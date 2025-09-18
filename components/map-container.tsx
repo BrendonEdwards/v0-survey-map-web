@@ -399,10 +399,13 @@ const MapContainer = forwardRef<MapContainerRef, MapContainerProps>(({ onMapStat
     if (!mapRef.current || !window.L) return
     try {
       if (result.bbox && result.bbox.length === 4) {
-        const bounds = window.L.latLngBounds(
-          [result.bbox[1], result.bbox[0]],
-          [result.bbox[3], result.bbox[2]],
-        )
+        const south = result.bbox[0]
+        const north = result.bbox[1]
+        const west = result.bbox[2]
+        const east = result.bbox[3]
+        const sw = [south, west] as [number, number]
+        const ne = [north, east] as [number, number]
+        const bounds = window.L.latLngBounds(sw, ne)
         if (bounds.isValid()) {
           mapRef.current.fitBounds(bounds, { padding: [48, 48], maxZoom: 16 })
           return

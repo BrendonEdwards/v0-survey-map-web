@@ -431,12 +431,12 @@ const MapContainer = forwardRef<MapContainerRef, MapContainerProps>(({ onMapStat
   }
 
   return (
-    <div className="relative w-full h-full">
-      <div ref={mapContainerRef} className="w-full h-full" />
+  <div className="relative w-full h-full">
+    <div ref={mapContainerRef} className="w-full h-full" />
 
-      <div className="absolute left-4 top-4 z-50">
-        <SearchBox onPick={flyToResult} />
-      </div>
+    <div className="absolute left-4 top-4 z-[2000] pointer-events-auto">
+      <SearchBox onPick={flyToResult} />
+    </div>
 
       {isLoading && (
         <div className="absolute inset-0 bg-background/50 flex items-center justify-center z-[1000]">

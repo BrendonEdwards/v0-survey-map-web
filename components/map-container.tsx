@@ -5,7 +5,6 @@ import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Layers } from "lucide-react"
 import { MapStats } from "./map-stats"
-import SearchBox from "./SearchBox"
 import { ToastNotification } from "./toast-notification"
 
 declare global {
@@ -24,7 +23,7 @@ interface SurveyPoint {
 
 const sanitizeCssClass = (str: string): string => str.replace(/[^a-zA-Z0-9_-]/g, "_")
 
-type MapContainerProps = {
+export type MapContainerProps = {
   onMapStateChange?: (state: { zoom: number; lat: number; lng: number }) => void
   initialState?: { zoom: number; lat: number; lng: number }
 }
@@ -32,6 +31,7 @@ type MapContainerProps = {
 export interface MapContainerRef {
   searchAndFlyTo: (cellId: string) => Promise<boolean>
   getSuggestions: (query: string) => string[]
+  navigateToPlace: (result: { lat: number; lon: number; bbox?: [number, number, number, number] }) => void
 }
 
 /** helpers to load external assets once */
@@ -128,6 +128,31 @@ const MapContainer = forwardRef<MapContainerRef, MapContainerProps>(({ onMapStat
     }
   }
 
+  const navigateToPlace = (result: { lat: number; lon: number; bbox?: [number, number, number, number] }) => {
+    if (!mapRef.current || !window.L) return
+    try {
+      if (result.bbox && result.bbox.length === 4) {
+        const south = result.bbox[0]
+        const north = result.bbox[1]
+        const west = result.bbox[2]
+        const east = result.bbox[3]
+        const sw = [south, west] as [number, number]
+        const ne = [north, east] as [number, number]
+        const bounds = window.L.latLngBounds(sw, ne)
+        if (bounds.isValid()) {
+          mapRef.current.fitBounds(bounds, { padding: [48, 48], maxZoom: 16 })
+          return
+        }
+      }
+
+      const current = typeof mapRef.current.getZoom === "function" ? mapRef.current.getZoom() : 0
+      const targetZoom = current && current > 0 ? Math.max(current, 14) : 14
+      mapRef.current.flyTo([result.lat, result.lon], targetZoom, { duration: 1.2 })
+    } catch (e) {
+      console.warn("[v0] Search navigation error", e)
+    }
+  }
+
   useImperativeHandle(ref, () => ({
     searchAndFlyTo: async (cellId: string): Promise<boolean> => {
       const point = surveyPoints.find((p) => p.cell_id.toLowerCase() === cellId.toLowerCase())
@@ -174,6 +199,7 @@ const MapContainer = forwardRef<MapContainerRef, MapContainerProps>(({ onMapStat
         .map((p) => p.cell_id)
         .sort()
     },
+    navigateToPlace,
   }))
 
   const loadGeoJSONData = async (): Promise<SurveyPoint[]> => {
@@ -395,31 +421,6 @@ const MapContainer = forwardRef<MapContainerRef, MapContainerProps>(({ onMapStat
     setCurrentBasemap(newBasemap)
   }
 
-  const flyToResult = (result: { lat: number; lon: number; bbox?: [number, number, number, number] }) => {
-    if (!mapRef.current || !window.L) return
-    try {
-      if (result.bbox && result.bbox.length === 4) {
-        const south = result.bbox[0]
-        const north = result.bbox[1]
-        const west = result.bbox[2]
-        const east = result.bbox[3]
-        const sw = [south, west] as [number, number]
-        const ne = [north, east] as [number, number]
-        const bounds = window.L.latLngBounds(sw, ne)
-        if (bounds.isValid()) {
-          mapRef.current.fitBounds(bounds, { padding: [48, 48], maxZoom: 16 })
-          return
-        }
-      }
-
-      const current = typeof mapRef.current.getZoom === "function" ? mapRef.current.getZoom() : 0
-      const targetZoom = current && current > 0 ? Math.max(current, 14) : 14
-      mapRef.current.flyTo([result.lat, result.lon], targetZoom, { duration: 1.2 })
-    } catch (e) {
-      console.warn("[v0] Search navigation error", e)
-    }
-  }
-
   if (!leafletLoaded) {
     return (
       <div className="w-full h-full flex items-center justify-center bg-muted">
@@ -434,12 +435,8 @@ const MapContainer = forwardRef<MapContainerRef, MapContainerProps>(({ onMapStat
   }
 
   return (
-  <div className="relative w-full h-full">
-    <div ref={mapContainerRef} className="w-full h-full" />
-
-    <div className="absolute left-4 top-4 z-[2000] pointer-events-auto">
-      <SearchBox onPick={flyToResult} />
-    </div>
+    <div className="relative w-full h-full">
+      <div ref={mapContainerRef} className="w-full h-full" />
 
       {isLoading && (
         <div className="absolute inset-0 bg-background/50 flex items-center justify-center z-[1000]">

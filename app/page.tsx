@@ -1,11 +1,14 @@
 "use client"
 
 import { useRef, useState, useEffect } from "react"
+import type { ForwardRefExoticComponent, RefAttributes } from "react"
 import dynamic from "next/dynamic"
 import { MobileHeader } from "@/components/mobile-header"
 import { ToastNotification } from "@/components/toast-notification"
 import { ShareButton } from "@/components/share-button"
 import { useUrlState } from "@/hooks/use-url-state"
+import type { MapContainerProps, MapContainerRef } from "@/components/map-container"
+import type { PlaceResult } from "@/components/SearchBox"
 
 // Dynamically import map components to avoid SSR issues
 const MapContainer = dynamic(() => import("@/components/map-container"), {
@@ -15,13 +18,13 @@ const MapContainer = dynamic(() => import("@/components/map-container"), {
       <div className="text-muted-foreground">Loading map...</div>
     </div>
   ),
-})
+}) as ForwardRefExoticComponent<MapContainerProps & RefAttributes<MapContainerRef>>
 
 export default function SurveyMapPage() {
   const [isSearching, setIsSearching] = useState(false)
   const [searchError, setSearchError] = useState<string | null>(null)
   const [currentMapState, setCurrentMapState] = useState({ zoom: 4, lat: 39.8283, lng: -98.5795 })
-  const mapRef = useRef<any>(null)
+  const mapRef = useRef<MapContainerRef | null>(null)
   const { parseUrlState, updateUrlState, getShareableUrl, clearUrlState } = useUrlState()
 
   useEffect(() => {
@@ -133,6 +136,10 @@ export default function SurveyMapPage() {
     return mapRef.current?.getSuggestions?.(query) || []
   }
 
+  const handleNavigateToPlace = (result: PlaceResult) => {
+    mapRef.current?.navigateToPlace(result)
+  }
+
   return (
     <div className="relative w-full h-screen overflow-hidden bg-background">
       {/* Responsive Header */}
@@ -141,6 +148,8 @@ export default function SurveyMapPage() {
         getSuggestions={getSuggestions}
         isSearching={isSearching}
         onClearSearch={handleClearSearch}
+        onGetShareUrl={getShareUrl}
+        onNavigateToPlace={handleNavigateToPlace}
       />
 
       {/* Share Button - Desktop */}

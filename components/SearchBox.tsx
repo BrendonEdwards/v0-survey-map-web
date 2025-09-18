@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 
-type Result = { name: string; lat: number; lon: number; bbox?: [number, number, number, number] };
-type Props = { onPick: (r: Result) => void };
+import { cn } from "@/lib/utils";
 
-export default function SearchBox({ onPick }: Props) {
+export type PlaceResult = { name: string; lat: number; lon: number; bbox?: [number, number, number, number] };
+type Props = { onPick: (r: PlaceResult) => void; className?: string };
+
+export default function SearchBox({ onPick, className }: Props) {
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
-  const [results, setResults] = useState<Result[]>([]);
+  const [results, setResults] = useState<PlaceResult[]>([]);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -21,7 +23,7 @@ export default function SearchBox({ onPick }: Props) {
       try {
         const res = await fetch(`/api/geocode?q=${encodeURIComponent(q)}`);
         if (!res.ok) return;
-        const data: Result[] = await res.json();
+        const data: PlaceResult[] = await res.json();
         setResults(data);
         setOpen(true);
         setActiveIndex(null);
@@ -36,12 +38,12 @@ export default function SearchBox({ onPick }: Props) {
   }, [q]);
 
   return (
-    <div className="relative w-full max-w-md">
+    <div className={cn("relative w-64", className)}>
       <input
         value={q}
         onChange={(e) => setQ(e.target.value)}
         placeholder="Search a city or neighbourhood"
-        className="w-full rounded-xl border px-4 py-2 shadow-sm"
+        className="w-full h-9 rounded-lg border border-border bg-background px-3 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
         onFocus={() => q && setOpen(true)}
         onBlur={() =>
           setTimeout(() => {
@@ -82,13 +84,16 @@ export default function SearchBox({ onPick }: Props) {
         }}
       />
       {open && results.length > 0 && (
-        <ul className="absolute z-50 mt-1 max-h-64 w-full overflow-auto rounded-xl border bg-white shadow">
+        <ul className="absolute z-50 mt-1 max-h-64 w-full overflow-auto rounded-xl border bg-popover text-popover-foreground shadow">
           {results.map((r, i) => (
             <li
               key={`${r.lat}-${r.lon}-${i}`}
-              className={`cursor-pointer px-3 py-2 ${
-                activeIndex === i ? "bg-gray-100" : "hover:bg-gray-100"
-              }`}
+              className={cn(
+                "cursor-pointer px-3 py-2 text-sm",
+                activeIndex === i
+                  ? "bg-accent text-accent-foreground"
+                  : "hover:bg-accent hover:text-accent-foreground",
+              )}
               onMouseDown={() => {
                 setOpen(false);
                 setQ(r.name);

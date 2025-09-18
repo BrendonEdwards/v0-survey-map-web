@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Layers } from "lucide-react"
 import { MapStats } from "./map-stats"
+import SearchBox from "./SearchBox"
 import { ToastNotification } from "./toast-notification"
 
 declare global {
@@ -394,6 +395,28 @@ const MapContainer = forwardRef<MapContainerRef, MapContainerProps>(({ onMapStat
     setCurrentBasemap(newBasemap)
   }
 
+  const flyToResult = (result: { lat: number; lon: number; bbox?: [number, number, number, number] }) => {
+    if (!mapRef.current || !window.L) return
+    try {
+      if (result.bbox && result.bbox.length === 4) {
+        const bounds = window.L.latLngBounds(
+          [result.bbox[1], result.bbox[0]],
+          [result.bbox[3], result.bbox[2]],
+        )
+        if (bounds.isValid()) {
+          mapRef.current.fitBounds(bounds, { padding: [48, 48], maxZoom: 16 })
+          return
+        }
+      }
+
+      const current = typeof mapRef.current.getZoom === "function" ? mapRef.current.getZoom() : 0
+      const targetZoom = current && current > 0 ? Math.max(current, 14) : 14
+      mapRef.current.flyTo([result.lat, result.lon], targetZoom, { duration: 1.2 })
+    } catch (e) {
+      console.warn("[v0] Search navigation error", e)
+    }
+  }
+
   if (!leafletLoaded) {
     return (
       <div className="w-full h-full flex items-center justify-center bg-muted">
@@ -410,6 +433,10 @@ const MapContainer = forwardRef<MapContainerRef, MapContainerProps>(({ onMapStat
   return (
     <div className="relative w-full h-full">
       <div ref={mapContainerRef} className="w-full h-full" />
+
+      <div className="absolute left-4 top-4 z-50">
+        <SearchBox onPick={flyToResult} />
+      </div>
 
       {isLoading && (
         <div className="absolute inset-0 bg-background/50 flex items-center justify-center z-[1000]">
